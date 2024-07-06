@@ -140,6 +140,9 @@ namespace RP0
         [KSPField(isPersistant = true)]
         public FundTargetProject fundTarget = new FundTargetProject();
 
+        [KSPField(isPersistant = true)]
+        public HireStaffProject staffTarget = new HireStaffProject();
+
         #endregion
 
         #region Fields
@@ -522,7 +525,7 @@ namespace RP0
                 bool foundStockKSC = false;
                 foreach (var ksc in KSCs)
                 {
-                    if (ksc.KSCName.Length > 0 && string.Equals(ksc.KSCName, _legacyDefaultKscId, StringComparison.OrdinalIgnoreCase))
+                    if (ksc.KSCName.Length > 0 && string.Equals(ksc.KSCName, KSCSwitcherInterop.LegacyDefaultKscId, StringComparison.OrdinalIgnoreCase))
                     {
                         foundStockKSC = true;
                         break;
@@ -643,11 +646,11 @@ namespace RP0
 
         private void TryMigrateStockKSC()
         {
-            LCSpaceCenter stockKsc = KSCs.Find(k => string.Equals(k.KSCName, _legacyDefaultKscId, StringComparison.OrdinalIgnoreCase));
+            LCSpaceCenter stockKsc = KSCs.Find(k => string.Equals(k.KSCName, KSCSwitcherInterop.LegacyDefaultKscId, StringComparison.OrdinalIgnoreCase));
             if (KSCs.Count == 1)
             {
                 // Rename the stock KSC to the new default (Cape)
-                stockKsc.KSCName = _defaultKscId;
+                stockKsc.KSCName = KSCSwitcherInterop.DefaultKscId;
                 SetActiveKSC(stockKsc.KSCName);
                 return;
             }
@@ -663,7 +666,7 @@ namespace RP0
             int numOtherUsedKSCs = KSCs.Count(k => !k.IsEmpty && k != stockKsc);
             if (numOtherUsedKSCs == 0)
             {
-                string kscName = GetActiveRSSKSC() ?? _defaultKscId;
+                string kscName = KSCSwitcherInterop.GetActiveRSSKSC() ?? KSCSwitcherInterop.DefaultKscId;
                 LCSpaceCenter newDefault = KSCs.Find(k => string.Equals(k.KSCName, kscName, StringComparison.OrdinalIgnoreCase));
                 if (newDefault != null)
                 {
@@ -676,7 +679,7 @@ namespace RP0
             }
 
             // Can't really do anything if there's multiple KSCs in use.
-            if (!IsKSCSwitcherInstalled)
+            if (!KSCSwitcherInterop.IsKSCSwitcherInstalled)
             {
                 // Need to switch back to the legacy "Stock" KSC if KSCSwitcher isn't installed
                 SetActiveKSC(stockKsc.KSCName);
@@ -863,77 +866,18 @@ namespace RP0
 
         #endregion
 
-        #region KSCSwitcher section
-
-        private static bool? _isKSCSwitcherInstalled = null;
-        private static FieldInfo _fiKSCSwInstance;
-        private static FieldInfo _fiKSCSwSites;
-        private static FieldInfo _fiKSCSwLastSite;
-        private static FieldInfo _fiKSCSwDefaultSite;
-        private const string _legacyDefaultKscId = "Stock";
-        private const string _defaultKscId = "us_cape_canaveral";
-
-        private static bool IsKSCSwitcherInstalled
-        {
-            get
-            {
-                if (!_isKSCSwitcherInstalled.HasValue)
-                {
-                    Assembly a = AssemblyLoader.loadedAssemblies.FirstOrDefault(la => string.Equals(la.name, "KSCSwitcher", StringComparison.OrdinalIgnoreCase))?.assembly;
-                    _isKSCSwitcherInstalled = a != null;
-                    if (_isKSCSwitcherInstalled.Value)
-                    {
-                        Type t = a.GetType("regexKSP.KSCLoader");
-                        _fiKSCSwInstance = t?.GetField("instance", BindingFlags.Public | BindingFlags.Static);
-                        _fiKSCSwSites = t?.GetField("Sites", BindingFlags.Public | BindingFlags.Instance | BindingFlags.FlattenHierarchy);
-
-                        t = a.GetType("regexKSP.KSCSiteManager");
-                        _fiKSCSwLastSite = t?.GetField("lastSite", BindingFlags.Public | BindingFlags.Instance | BindingFlags.FlattenHierarchy);
-                        _fiKSCSwDefaultSite = t?.GetField("defaultSite", BindingFlags.Public | BindingFlags.Instance | BindingFlags.FlattenHierarchy);
-
-                        if (_fiKSCSwInstance == null || _fiKSCSwSites == null || _fiKSCSwLastSite == null || _fiKSCSwDefaultSite == null)
-                        {
-                            RP0Debug.LogError("Failed to bind to KSCSwitcher");
-                            _isKSCSwitcherInstalled = false;
-                        }
-                    }
-                }
-                return _isKSCSwitcherInstalled.Value;
-            }
-        }
-
-        private string GetActiveRSSKSC()
-        {
-            if (!IsKSCSwitcherInstalled) return null;
-
-            // get the LastKSC.KSCLoader.instance object
-            // check the Sites object (KSCSiteManager) for the lastSite, if "" then get defaultSite
-
-            object loaderInstance = _fiKSCSwInstance.GetValue(null);
-            if (loaderInstance == null)
-                return null;
-            object sites = _fiKSCSwSites.GetValue(loaderInstance);
-            string lastSite = _fiKSCSwLastSite.GetValue(sites) as string;
-
-            if (lastSite == string.Empty)
-                lastSite = _fiKSCSwDefaultSite.GetValue(sites) as string;
-            return lastSite;
-        }
-
-        #endregion
-
         #region KSC
 
         private void SetActiveKSCToRSS()
         {
-            string site = GetActiveRSSKSC();
+            string site = KSCSwitcherInterop.GetActiveRSSKSC();
             SetActiveKSC(site);
         }
 
         public void SetActiveKSC(string site)
         {
             if (site == null || site.Length == 0)
-                site = _defaultKscId;
+                site = KSCSwitcherInterop.DefaultKscId;
             if (ActiveSC == null || site != ActiveSC.KSCName)
             {
                 RP0Debug.Log($"Setting active site to {site}");
@@ -1049,7 +993,7 @@ namespace RP0
         public double GetRolloutCostOverTime(double time, LCSpaceCenter ksc)
         {
             double delta = 0;
-            for (int i = 1; i < ksc.LaunchComplexes.Count; ++i)
+            for (int i = 0; i < ksc.LaunchComplexes.Count; ++i)
                 delta += GetRolloutCostOverTime(time, ksc.LaunchComplexes[i]);
 
             return delta;
@@ -1691,6 +1635,14 @@ namespace RP0
                 if (fundTarget.IsValid && fundTarget.GetTimeLeft() < 0.5d)
                     fundTarget.Clear();
             }
+
+            if (staffTarget.IsValid)
+            {
+                staffTarget.IncrementProgress(UTDiff);
+                if (staffTarget.IsComplete())
+                    staffTarget.Clear();
+            }
+
             Profiler.EndSample();
         }
 
@@ -1766,6 +1718,8 @@ namespace RP0
                         }
                         var proj = new VesselRepairProject(FlightGlobals.ActiveVessel, launchSite, lc);
                         lc.VesselRepairs.Add(proj);
+
+                        KCT_GUI.GUIStates.ShowBuildList = true;
                     }
                 }
             }
