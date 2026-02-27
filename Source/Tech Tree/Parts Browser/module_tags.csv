@@ -20,3 +20,4 @@ UnpressurizedCockpit,
 NuclearRTG,Tag
 isDynamic,TagSetting
 TankIsogrid,Tag
+TankSeparate,Tag
